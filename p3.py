@@ -1,6 +1,13 @@
 import pulp
 import tempfile
 
+def extrai_stock_farbica(fabricas, id_fabrica):
+    for i in fabricas:
+        if i[0] == id_fabrica:
+            return i[2]
+    return -1
+
+
 def resolver_distribuicao():
     try:
         # Ler os parâmetros iniciais do usuário
@@ -28,16 +35,24 @@ def resolver_distribuicao():
         for _ in range(t):
             dados = list(map(int, input().strip().split()))
             ck, pj, *fabricas_ck = dados
-            print(fabricas_ck)
-            pedidos.append((ck, pj, fabricas_ck))
-
-    
+            fabricas_validas = [id_fabrica for id_fabrica in fabricas_ck if any(f[0] == id_fabrica for f in fabricas)]
+            if fabricas_validas:
+                for id_fabrica in fabricas_ck:
+                    stock = extrai_stock_farbica(fabricas, id_fabrica)
+                    if (stock > 0):
+                        pedidos.append((ck, pj, fabricas_ck))
+                        break
+        # Filtrar pedidos que não podem ser atendidos por nenhuma fábrica
+        
 
         # Variaveis sao do tipo:
         # fabricas = numero_fabrica, numero_pais, stock_maximo
-        # paises = numero_pais, lim max export, lim min export
+        # paises = numero_pais, lim max export, lim min de receber
         # pedidos = numero_pedido, numero_pais, fabricas_possiveis
-
+        if (len(pedidos) == 0):
+            return 0
+       
+            
         # Create the optimization problem
         # Verificado [X]
         problema = pulp.LpProblem("Distribuicao_de_Brinquedos", pulp.LpMaximize)
@@ -48,8 +63,10 @@ def resolver_distribuicao():
 
         # Objective function: maximize the number of requests fulfilled
         problema += pulp.lpSum(x[k, f] for k, _, fabricas_ck in pedidos for f in fabricas_ck), "Maximizar_pedidos_atendidos"
-
+    
         # Factory capacity constraints
+        # Verificado [X]
+        # Para cada fábrica, a soma dos pedidos atendidos por ela deve ser menor ou igual ao seu limite
         for fi, pi, fmax in fabricas:
             problema += (
                 pulp.lpSum(
@@ -61,13 +78,16 @@ def resolver_distribuicao():
             )
 
         # Export and import constraints per country
-        for pj, pmaxj, pminj in paises:
+        for pj, pmaxj, pminj in paises: # Escolher um país
             # Maximum export constraint (excluding intra-country distribution)
             problema += (
                 pulp.lpSum(
                     x[k, f] 
                     for k, pais, fabricas_ck in pedidos 
-                    for f in fabricas_ck 
+                    for f in fabricas_ck # Dentro de um pedido, escolher uma fábrica
+                   
+                    # 1. Check if the request is for the current country
+                    # 2. Check if the factory is in a different country
                     if pais == pj and any(fi == f and pais_fabrica != pj for fi, pais_fabrica, _ in fabricas)
                 ) <= pmaxj,
                 f"Exportacao_maxima_{pj}"
@@ -92,15 +112,13 @@ def resolver_distribuicao():
         
         # Resolver o problema
         try:
-            status = problema.solve(pulp.PULP_CBC_CMD(msg=False))
+            status = problema.solve(pulp.PULP_CBC_CMD(msg=0))
         except Exception as e:
-            print(f"Erro durante a resolução do problema: {e}")
-            
+            return -1;
 
         # Verificar o status do solver
         if pulp.LpStatus[status] not in ["Optimal", "Feasible"]:
-            print("return not feasible")
-            print({"status": "optimal", "fulfilled_requests": resultado})
+            #print("Solver não encontrou uma solução ótima")
             return -1
 
         # Calcular o número de pedidos atendidos
@@ -110,17 +128,12 @@ def resolver_distribuicao():
                 if any(pulp.value(x[k, f]) == 1 for f in fabricas_ck)
             )
         except Exception as e:
-            print(f"Erro ao calcular o resultado: {e}")
-            print(3)
             return -1
 
         # Garantir que todos os pedidos foram atendidos, se necessário
-        
-
         return resultado
 
     except Exception as e:
-        print(f"Erro geral na função: {e}")
         return -1
 
 
