@@ -10,6 +10,7 @@ def resolver_distribuicao():
         if n <= 0 or m <= 0 or t <= 0:
             return -1
 
+
         # Ler os dados das fábricas
         fabricas = []
         for _ in range(n):
